@@ -1,6 +1,4 @@
 import os
-import psycopg2
-import psycopg2.extras
 from flask import Flask, jsonify, request, render_template
 from flask_cors import CORS
 from datetime import datetime
@@ -8,40 +6,65 @@ from datetime import datetime
 app = Flask(__name__, template_folder='../frontend', static_folder='../frontend/static')
 CORS(app)
 
-# 数据库配置 - Render自动提供DATABASE_URL
-DATABASE_URL = os.environ.get('DATABASE_URL')
-
+# 数据库配置
 def get_db_connection():
-    """获取数据库连接"""
+    """获取数据库连接 - 优先PostgreSQL，失败则用SQLite"""
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    
     if DATABASE_URL:
-        conn = psycopg2.connect(DATABASE_URL, sslmode='require' if 'render.com' in DATABASE_URL else None)
-    else:
-        # 本地开发使用SQLite
-        import sqlite3
-        conn = sqlite3.connect('../data/local.db')
-        conn.row_factory = sqlite3.Row
-    return conn
+        try:
+            # 使用 pg8000 (纯Python PostgreSQL驱动)
+            import pg8000
+            # Render的DATABASE_URL格式: postgres://user:pass@host:port/dbname
+            # 需要转换为 pg8000 格式
+            conn = pg8000.dbapi.connect(DATABASE_URL)
+            return conn, 'postgresql'
+        except Exception as e:
+            print(f"PostgreSQL连接失败: {e}, 使用SQLite")
+    
+    # 回退到SQLite
+    import sqlite3
+    conn = sqlite3.connect('/tmp/local.db')
+    conn.row_factory = sqlite3.Row
+    return conn, 'sqlite'
 
 def init_db():
     """初始化数据库表"""
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cur = conn.cursor()
     
-    # 创建账号表
-    cur.execute('''
-        CREATE TABLE IF NOT EXISTS accounts (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(100) UNIQUE NOT NULL,
-            followers INTEGER DEFAULT 0,
-            hearts INTEGER DEFAULT 0,
-            videos INTEGER DEFAULT 0,
-            account_type VARCHAR(20) DEFAULT '未知',
-            industry VARCHAR(50) DEFAULT '',
-            style VARCHAR(50) DEFAULT '',
-            source VARCHAR(50) DEFAULT '',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
+    if db_type == 'postgresql':
+        # PostgreSQL语法
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS accounts (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(100) UNIQUE NOT NULL,
+                followers INTEGER DEFAULT 0,
+                hearts INTEGER DEFAULT 0,
+                videos INTEGER DEFAULT 0,
+                account_type VARCHAR(20) DEFAULT '未知',
+                industry VARCHAR(50) DEFAULT '',
+                style VARCHAR(50) DEFAULT '',
+                source VARCHAR(50) DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+    else:
+        # SQLite语法
+        cur.execute('''
+            CREATE TABLE IF NOT EXISTS accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                followers INTEGER DEFAULT 0,
+                hearts INTEGER DEFAULT 0,
+                videos INTEGER DEFAULT 0,
+                account_type TEXT DEFAULT '未知',
+                industry TEXT DEFAULT '',
+                style TEXT DEFAULT '',
+                source TEXT DEFAULT '',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
     
     conn.commit()
     cur.close()
@@ -55,7 +78,7 @@ def index():
 # 获取所有账号
 @app.route('/api/accounts', methods=['GET'])
 def get_accounts():
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cur = conn.cursor()
     
     cur.execute('''
@@ -71,14 +94,14 @@ def get_accounts():
         accounts.append({
             'id': row[0],
             'username': row[1],
-            'followers': row[2],
-            'hearts': row[3],
-            'videos': row[4],
-            'account_type': row[5],
-            'industry': row[6],
-            'style': row[7],
-            'source': row[8],
-            'created_at': row[9].isoformat() if row[9] else None
+            'followers': row[2] or 0,
+            'hearts': row[3] or 0,
+            'videos': row[4] or 0,
+            'account_type': row[5] or '未知',
+            'industry': row[6] or '',
+            'style': row[7] or '',
+            'source': row[8] or '',
+            'created_at': str(row[9]) if row[9] else None
         })
     
     cur.close()
@@ -90,28 +113,44 @@ def get_accounts():
 @app.route('/api/accounts/batch', methods=['POST'])
 def add_accounts_batch():
     data_list = request.json
-    
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cur = conn.cursor()
     
     inserted = 0
     for data in data_list:
         try:
-            cur.execute('''
-                INSERT INTO accounts (username, followers, hearts, videos, 
-                                    account_type, industry, style, source)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (username) DO NOTHING
-            ''', (
-                data.get('username'),
-                int(data.get('followers', 0)),
-                int(data.get('hearts', 0)),
-                int(data.get('videos', 0)),
-                data.get('account_type', '未知'),
-                data.get('industry', ''),
-                data.get('style', ''),
-                data.get('source', '手动导入')
-            ))
+            if db_type == 'postgresql':
+                cur.execute('''
+                    INSERT INTO accounts (username, followers, hearts, videos, 
+                                        account_type, industry, style, source)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (username) DO NOTHING
+                ''', (
+                    data.get('username'),
+                    int(data.get('followers', 0)),
+                    int(data.get('hearts', 0)),
+                    int(data.get('videos', 0)),
+                    data.get('account_type', '未知'),
+                    data.get('industry', ''),
+                    data.get('style', ''),
+                    data.get('source', '手动导入')
+                ))
+            else:
+                cur.execute('''
+                    INSERT OR IGNORE INTO accounts 
+                    (username, followers, hearts, videos, account_type, industry, style, source)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    data.get('username'),
+                    int(data.get('followers', 0)),
+                    int(data.get('hearts', 0)),
+                    int(data.get('videos', 0)),
+                    data.get('account_type', '未知'),
+                    data.get('industry', ''),
+                    data.get('style', ''),
+                    data.get('source', '手动导入')
+                ))
+            
             if cur.rowcount > 0:
                 inserted += 1
         except Exception as e:
@@ -126,7 +165,7 @@ def add_accounts_batch():
 # 获取统计信息
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
-    conn = get_db_connection()
+    conn, db_type = get_db_connection()
     cur = conn.cursor()
     
     # 总数
