@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TikTok 短剧行业分析平台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fa; color: #333; }
+        .container { max-width: 1400px; margin: 0 auto; padding: 20px; }
+        header { background: linear-gradient(135deg, #ff0050 0%, #00f2ea 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 24px; }
+        header h1 { font-size: 28px; margin-bottom: 8px; }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .stat-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 8px; text-transform: uppercase; }
+        .stat-card .number { font-size: 32px; font-weight: bold; color: #ff0050; }
+        .progress-section { background: white; padding: 20px; border-radius: 12px; margin-bottom: 24px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .progress-bar { width: 100%; height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden; margin-top: 12px; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, #ff0050, #00f2ea); transition: width 0.5s; }
+        table { width: 100%; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #f8f9fa; font-weight: 600; font-size: 14px; color: #666; }
+        tr:hover { background: #f8f9fa; }
+        .tag { display: inline-block; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+        .tag-official { background: #e3f2fd; color: #1976d2; }
+        .tag-kol { background: #f3e5f5; color: #7b1fa2; }
+        .tag-high { background: #e8f5e9; color: #388e3c; }
+        .tag-medium { background: #fff3e0; color: #f57c00; }
+        .tag-low { background: #fce4ec; color: #c2185b; }
+        .loading { text-align: center; padding: 40px; color: #999; }
+        .error { text-align: center; padding: 40px; color: #e53935; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎬 TikTok 短剧行业分析平台</h1>
+            <p>北美短剧市场数据洞察 | 目标: 1000账号 / 500视频</p>
+        </header>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>总账号数</h3>
+                <div class="number" id="totalAccounts">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>大号 (>10K粉)</h3>
+                <div class="number" id="highPerformers">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>官方号</h3>
+                <div class="number" id="officialCount">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>KOL</h3>
+                <div class="number" id="kolCount">-</div>
+            </div>
+        </div>
+        
+        <div class="progress-section">
+            <h3>📊 数据收集进度</h3>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+                <span id="progressText">0 / 1000</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressBar" style="width: 0%"></div>
+            </div>
+            <p style="margin-top: 12px; color: #666; font-size: 14px;">
+                最后更新: <span id="lastUpdate">-</span>
+            </p>
+        </div>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>账号名</th>
+                    <th>类型</th>
+                    <th>粉丝数</th>
+                    <th>获赞数</th>
+                    <th>视频数</th>
+                    <th>均赞</th>
+                    <th>互动率</th>
+                    <th>行业</th>
+                    <th>来源</th>
+                </tr>
+            </thead>
+            <tbody id="accountsTableBody">
+                <tr><td colspan="9" class="loading">加载中...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // 嵌入式账号数据 - 由后端自动生成
+        const ACCOUNTS_DATA = /* DATA_PLACEHOLDER */;
+        
+        function init() {
+            const accounts = ACCOUNTS_DATA || [];
+            
+            // 计算统计数据
+            const total = accounts.length;
+            const high = accounts.filter(a => (a.followers || 0) > 10000).length;
+            const official = accounts.filter(a => a.account_type === '官方号').length;
+            const kol = accounts.filter(a => a.account_type === 'KOL').length;
+            
+            // 更新统计卡片
+            document.getElementById('totalAccounts').textContent = total;
+            document.getElementById('highPerformers').textContent = high;
+            document.getElementById('officialCount').textContent = official;
+            document.getElementById('kolCount').textContent = kol;
+            
+            // 更新进度条
+            const progress = Math.min((total / 1000 * 100), 100).toFixed(1);
+            document.getElementById('progressText').textContent = `${total} / 1000`;
+            document.getElementById('progressPercent').textContent = progress + '%';
+            document.getElementById('progressBar').style.width = progress + '%';
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleString('zh-CN');
+            
+            // 渲染表格
+            renderTable(accounts);
+        }
+        
+        function renderTable(accounts) {
+            const tbody = document.getElementById('accountsTableBody');
+            
+            if (accounts.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="error">暂无数据</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = accounts.map(acc => {
+                const followers = parseInt(acc.followers) || 0;
+                const hearts = parseInt(acc.hearts) || 0;
+                const videos = parseInt(acc.videos) || 0;
+                const avgHeart = videos > 0 ? (hearts / videos).toFixed(1) : 0;
+                const engagement = followers > 0 ? (hearts / followers * 100).toFixed(2) : 0;
+                
+                let levelTag = followers > 10000 ? 'tag-high' : followers > 1000 ? 'tag-medium' : 'tag-low';
+                let levelText = followers > 10000 ? '大号' : followers > 1000 ? '中号' : '小号';
+                
+                let typeClass = acc.account_type === '官方号' ? 'tag-official' : 'tag-kol';
+                let typeText = acc.account_type || '未知';
+                
+                return `<tr>
+                    <td><strong>@${acc.username}</strong></td>
+                    <td><span class="tag ${typeClass}">${typeText}</span></td>
+                    <td>${followers.toLocaleString()}</td>
+                    <td>${hearts.toLocaleString()}</td>
+                    <td>${videos}</td>
+                    <td>${avgHeart}</td>
+                    <td>${engagement}%</td>
+                    <td>${acc.industry || '-'}</td>
+                    <td>${acc.source || '-'}</td>
+                </tr>`;
+            }).join('');
+        }
+        
+        // 页面加载时初始化
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
