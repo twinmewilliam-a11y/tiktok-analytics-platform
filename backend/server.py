@@ -113,98 +113,112 @@ def get_accounts():
 @app.route('/api/accounts/batch', methods=['POST'])
 def add_accounts_batch():
     data_list = request.json
+    if not isinstance(data_list, list):
+        return jsonify({'success': False, 'error': 'Expected array'}), 400
+    
     conn, db_type = get_db_connection()
     cur = conn.cursor()
     
     inserted = 0
+    errors = []
     for data in data_list:
         try:
+            # 确保必要字段存在
+            username = data.get('username')
+            if not username:
+                continue
+                
+            followers = int(data.get('followers', 0) or 0)
+            hearts = int(data.get('hearts', 0) or 0)
+            videos = int(data.get('videos', 0) or 0)
+            account_type = data.get('account_type', '未知') or '未知'
+            industry = data.get('industry', '') or ''
+            style = data.get('style', '') or ''
+            source = data.get('source', '手动导入') or '手动导入'
+            
             if db_type == 'postgresql':
                 cur.execute('''
                     INSERT INTO accounts (username, followers, hearts, videos, 
                                         account_type, industry, style, source)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (username) DO NOTHING
-                ''', (
-                    data.get('username'),
-                    int(data.get('followers', 0)),
-                    int(data.get('hearts', 0)),
-                    int(data.get('videos', 0)),
-                    data.get('account_type', '未知'),
-                    data.get('industry', ''),
-                    data.get('style', ''),
-                    data.get('source', '手动导入')
-                ))
+                ''', (username, followers, hearts, videos, account_type, industry, style, source))
             else:
                 cur.execute('''
                     INSERT OR IGNORE INTO accounts 
                     (username, followers, hearts, videos, account_type, industry, style, source)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                ''', (
-                    data.get('username'),
-                    int(data.get('followers', 0)),
-                    int(data.get('hearts', 0)),
-                    int(data.get('videos', 0)),
-                    data.get('account_type', '未知'),
-                    data.get('industry', ''),
-                    data.get('style', ''),
-                    data.get('source', '手动导入')
-                ))
+                ''', (username, followers, hearts, videos, account_type, industry, style, source))
             
             if cur.rowcount > 0:
                 inserted += 1
         except Exception as e:
+            errors.append(f"{data.get('username')}: {e}")
             print(f"插入失败 {data.get('username')}: {e}")
     
     conn.commit()
     cur.close()
     conn.close()
     
-    return jsonify({'success': True, 'count': inserted})
+    return jsonify({'success': True, 'count': inserted, 'errors': errors[:5]})
 
 # 获取统计信息
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
-    conn, db_type = get_db_connection()
-    cur = conn.cursor()
-    
-    # 总数
-    cur.execute('SELECT COUNT(*) FROM accounts')
-    total = cur.fetchone()[0]
-    
-    # 按粉丝数分层
-    cur.execute('SELECT COUNT(*) FROM accounts WHERE followers > 10000')
-    high = cur.fetchone()[0]
-    
-    cur.execute('SELECT COUNT(*) FROM accounts WHERE followers BETWEEN 1000 AND 10000')
-    medium = cur.fetchone()[0]
-    
-    cur.execute('SELECT COUNT(*) FROM accounts WHERE followers < 1000')
-    low = cur.fetchone()[0]
-    
-    # 按账号类型统计
-    cur.execute("SELECT COUNT(*) FROM accounts WHERE account_type = '官方号'")
-    official = cur.fetchone()[0]
-    
-    cur.execute("SELECT COUNT(*) FROM accounts WHERE account_type = 'KOL'")
-    kol = cur.fetchone()[0]
-    
-    cur.execute("SELECT COUNT(*) FROM accounts WHERE account_type = '未知'")
-    unknown = cur.fetchone()[0]
-    
-    cur.close()
-    conn.close()
-    
-    return jsonify({
-        'total_accounts': total,
-        'high_performers': high,
-        'medium_performers': medium,
-        'low_performers': low,
-        'official_count': official,
-        'kol_count': kol,
-        'unknown_count': unknown,
-        'progress': f"{total}/1000"
-    })
+    try:
+        conn, db_type = get_db_connection()
+        cur = conn.cursor()
+        
+        # 总数
+        cur.execute('SELECT COUNT(*) FROM accounts')
+        total = cur.fetchone()[0]
+        
+        # 按粉丝数分层
+        cur.execute('SELECT COUNT(*) FROM accounts WHERE followers > 10000')
+        high = cur.fetchone()[0]
+        
+        cur.execute('SELECT COUNT(*) FROM accounts WHERE followers BETWEEN 1000 AND 10000')
+        medium = cur.fetchone()[0]
+        
+        cur.execute('SELECT COUNT(*) FROM accounts WHERE followers < 1000')
+        low = cur.fetchone()[0]
+        
+        # 按账号类型统计
+        cur.execute("SELECT COUNT(*) FROM accounts WHERE account_type = '官方号'")
+        official = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM accounts WHERE account_type = 'KOL'")
+        kol = cur.fetchone()[0]
+        
+        cur.execute("SELECT COUNT(*) FROM accounts WHERE account_type = '未知'")
+        unknown = cur.fetchone()[0]
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'total_accounts': total,
+            'high_performers': high,
+            'medium_performers': medium,
+            'low_performers': low,
+            'official_count': official,
+            'kol_count': kol,
+            'unknown_count': unknown,
+            'progress': f"{total}/1000"
+        })
+    except Exception as e:
+        print(f"Stats error: {e}")
+        return jsonify({
+            'total_accounts': 0,
+            'high_performers': 0,
+            'medium_performers': 0,
+            'low_performers': 0,
+            'official_count': 0,
+            'kol_count': 0,
+            'unknown_count': 0,
+            'progress': "0/1000",
+            'error': str(e)
+        }), 500
 
 # 健康检查
 @app.route('/health', methods=['GET'])
